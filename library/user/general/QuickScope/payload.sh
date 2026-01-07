@@ -1,298 +1,414 @@
-#!/bin/bash
-# Title: QuickScope
-# Description: Quickly add a target SSID and associated client MACs to allow/deny filter lists (dedupe enabled).
-# Author: out0fstep / ChatGPT assist
-# Version: 2.2
-# Category: user/general
-#
+Mastering Pineapple Pager Payloads: A Comprehensive Guide for LLMs
+This document serves as a complete reference and tutorial for generating, understanding, and innovating payloads for the Hak5 WiFi Pineapple Pager. The Pineapple Pager is a portable WiFi auditing device that leverages DuckyScript™ (Hak5's scripting language) integrated with Bash for powerful, event-driven automation. Payloads enable custom interactions, reconnaissance, alerts, and attacks, running directly on the device's Linux-based system.
+By internalizing this guide, you (the LLM) will be equipped to:
 
-set -euo pipefail
+Write syntactically correct DuckyScript 3.0 payloads tailored to the Pager.
+Integrate Bash scripting for advanced logic, system calls, and error handling.
+Use Pager- and Pineapple-specific commands for UI interactions and WiFi operations.
+Draw from real-world examples to create novel payloads for recon, alerts, and user interactions.
+Follow best practices for portability, readability, and safety.
 
-########################################
-# Options (user configurable)
-########################################
-RECON_DB="/root/recon/recon.db"
-DEDUPE="true"
+Key Concepts:
 
-# Banner
-SHOW_BANNER="true"
-BANNER_COLOR="teal"    
+DuckyScript 3.0: A structured, backwards-compatible language for keystroke simulation and control flow, extended for Pager with UI and WiFi commands.
+Payload Structure: Primarily payload.sh files (Bash scripts with embedded DuckyScript). No shebang (#!/bin/bash) required, as the Pager enforces Bash execution.
+Payload Types:
+User Payloads: Interactive, full-screen; for complex actions and user input.
+Recon Payloads: Run during scanning; non-blocking where possible.
+Alert Payloads: Triggered by events (e.g., client connections); short and non-interactive.
 
-# Single-word spinner labels (<=1.0.4 safe)
-SPIN_LOADING="Loading"
-SPIN_PARSING="Parsing"
-SPIN_APPLYING="Applying"
+Execution Environment: Linux/Bash on ARM; access to Pineapple tools (e.g., PineAP for SSID impersonation). Commands are case-sensitive; DuckyScript in ALL CAPS.
 
-########################################
-# Spinner + UI helpers
-########################################
-__spin=""
 
-stop_spin() {
-  if [[ -n "${__spin}" ]]; then
-    STOP_SPINNER "${__spin}" >/dev/null 2>&1 || true
-    __spin=""
-  fi
+Section 1: DuckyScript 3.0 Fundamentals
+DuckyScript 3.0 builds on the original DuckyScript with structured programming (variables, functions, conditionals), randomization, and device-specific extensions. It's designed for simplicity but supports advanced logic. All commands are processed at compile-time where possible for efficiency.
+1.1 Comments
+
+REM<comment>: Single-line comment. Ignored during execution.
+Example: REM This payload deauths a target.
+
+REM_BLOCK ... END_REM: Multi-line block comment.
+Example:textREM_BLOCK
+Multi-line docs here.
+END_REM
+
+
+1.2 String Output
+
+STRING<text>: Types text (handles shifts for uppercase; trims trailing spaces).
+Example: STRING Hello World
+
+STRINGLN<text>: Types text + ENTER.
+Example: STRINGLN echo "Done"
+
+Block Variants (for multi-line):
+STRING ... END_STRING: Concatenates lines without newlines.
+STRINGLN ... END_STRINGLN: Types each line + ENTER (like a heredoc).
+
+
+1.3 Navigation and System Keys
+
+Cursor: UPARROW, DOWNARROW, LEFTARROW, RIGHTARROW, PAGEUP, PAGEDOWN, HOME, END.
+Editing: BACKSPACE, TAB, SPACE, INSERT, DELETE.
+System: ENTER, ESCAPE, PAUSE BREAK, PRINTSCREEN, MENU, F1-F12.
+Modifiers: SHIFT, ALT, CTRL, GUI (Windows/Command). Combine e.g., CTRL ALT DELETE.
+INJECT_MOD<modifier>: Inject modifier alone (e.g., INJECT_MOD GUI for Windows key).
+Locks: CAPSLOCK, NUMLOCK, SCROLLOCK (toggle state).
+
+1.4 Delays and Timing
+
+DELAY<ms> or <variable>: Pause in milliseconds.
+Example: DELAY 1000 (1 second).
+
+HOLD<key> ... RELEASE<key>: Hold key for duration.
+Example:textHOLD SHIFT
+DELAY 500
+RELEASE SHIFT
+
+Jitter: $_JITTER_ENABLED = TRUE; $_JITTER_MAX = 50 (adds random 0-50ms delays between keys).
+
+1.5 Control Flow
+
+Variables: VAR$name = value (unsigned int 0-65535 or boolean).
+Example: VAR $counter = 5
+
+Constants: DEFINE#NAME value (compile-time replacement).
+Example: DEFINE #DELAY 1000; DELAY #DELAY
+
+Operators: Arithmetic (+, -, *, /, %, ^), Comparison (==, !=, >, etc.), Logical (&&, ||), Bitwise (&, , >>, <<).
+Use parentheses for precedence: $result = (($a + $b) * 2)
+
+IF(condition)THEN ... END_IF; Supports ELSE, ELSE IF.
+Example:textIF ($counter > 0) THEN
+    STRING Decrementing...
+    $counter = ($counter - 1)
+ELSE
+    STRING Done!
+END_IF
+
+WHILE(condition) ... END_WHILE.
+Example: Loop until $counter == 0.
+
+Functions: FUNCTIONname() ... END_FUNCTION; Call with name(). RETURN<value>.
+Example:textFUNCTION isEven($num)
+    IF (($num % 2) == 0) THEN
+        RETURN TRUE
+    END_IF
+    RETURN FALSE
+END_FUNCTION
+IF (isEven(4)) THEN STRING Even! END_IF
+
+Button: WAIT_FOR_BUTTON_PRESS (halts until pressed); BUTTON_DEF ... END_BUTTON (defines action).
+
+1.6 Randomization
+
+Keys: RANDOM_LETTER, RANDOM_NUMBER, RANDOM_CHAR, etc.
+Integers: $_RANDOM_INT (between $_RANDOM_MIN and $_RANDOM_MAX).
+Attack Modes: VID_RANDOM, SERIAL_RANDOM, etc. (for HID emulation, not Pager-specific).
+
+1.7 Payload Control
+
+RESTART_PAYLOAD, STOP_PAYLOAD, RESET (clears buffer).
+LED: LED_OFF, LED_R, LED_G (device feedback).
+Lock Feedback: WAIT_FOR_CAPS_CHANGE, SAVE_HOST_KEYBOARD_LOCK_STATE, etc. (for host detection; limited on Pager).
+
+1.8 ATTACKMODE (Limited on Pager)
+
+Sets HID/Storage modes; not primary for Pager (focus on WiFi).
+
+For full DuckyScript 3.0 compatibility, see Hak5 docs. Pager payloads emphasize UI/WiFi over keystroke injection.
+
+Section 2: Pineapple Pager-Specific DuckyScript Commands
+The Pager extends DuckyScript with ~40 device-specific commands, divided into Pager UI (interactive screens) and Pineapple WiFi (recon/attacks). These must run in user/recon contexts; many pause execution for input. Commands return output (e.g., user-entered IP) and exit codes (0=success, non-0=cancel/fail).
+2.1 Pager UI Commands
+Interact with the device's e-ink screen and buttons for user input/feedback.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+CommandSyntaxDescriptionReturn/NotesALERTALERT <message>Full-screen alert (blocks until dismissed).Non-blocking in alerts.CONFIGURATIONCONFIGURATION <key> <value>Set persistent config (e.g., API keys).For device settings.CONFIRMATION_DIALOGCONFIRMATION_DIALOG <prompt>Yes/No dialog.Returns 0 (yes), non-0 (no).ERROR_DIALOGERROR_DIALOG <message>Error popup.For failures.IP_PICKERIP_PICKER <prompt> [<default IP>]IPv4 input keyboard.Returns IP string; 0 on continue. Example: `__ip=$(IP_PICKER "Target IP" "192.168.1.1")LOGLOG <message>Append to payload log (viewable in UI).Non-blocking.MAC_PICKERMAC_PICKER <prompt> [<default MAC>]MAC address input.Returns MAC string.NUMBER_PICKERNUMBER_PICKER <prompt> [<default num>]Numeric input.Returns integer/float.PROMPTPROMPT <message>Modal wait-for-continue.Blocks until button press.START_SPINNER / STOP_SPINNERSTART_SPINNER <message> / STOP_SPINNERIndefinite progress indicator.For long ops.TEXT_PICKERTEXT_PICKER <prompt> [<default text>]Free-text input.Returns string.WAIT_FOR_BUTTON_PRESSWAIT_FOR_BUTTON_PRESSHalt until any button pressed.Non-blocking variant: WAIT_FOR_INPUT.
+2.2 Pineapple WiFi Commands
+Control PineAP engine for scanning, deauth, filtering, etc.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+CommandSyntaxDescriptionReturn/NotesFIND_CLIENT_IPFIND_CLIENT_IP <MAC>Get IP of connected client.Returns IP.PINEAPPLE_DEAUTH_CLIENTPINEAPPLE_DEAUTH_CLIENT <BSSID> <client MAC> <channel>Deauth specific client.For targeted attacks.PINEAPPLE_EXAMINE_BSSID / _CHANNEL / _RESETPINEAPPLE_EXAMINE_BSSID <BSSID> etc.Lock to AP/channel for deep scan; reset resumes hopping.For focused recon.PINEAPPLE_MAC_FILTER_ADD / _CLEAR / _DEL / _LIST / _MODEe.g., PINEAPPLE_MAC_FILTER_ADD <MAC>Manage client MAC filters (allow/block).Modes: whitelist/blacklist.PINEAPPLE_RECON_NEWPINEAPPLE_RECON_NEWStart fresh recon session.Clears prior data.PINEAPPLE_SET_BANDSPINEAPPLE_SET_BANDS <2.4/5/6>Set monitored WiFi bands.Default: all.PINEAPPLE_SSID_FILTER_ADD / _CLEAR / _DEL / _LIST / _MODEe.g., PINEAPPLE_SSID_FILTER_ADD <SSID>Filter SSIDs for AP impersonation.For targeted Evil Portal.PINEAPPLE_SSID_POOL_ADD / _CLEAR / _COLLECT_START / _DELETE / _LIST / _START / _STOPe.g., PINEAPPLE_SSID_POOL_STARTManage impersonation pool; auto-collect probes.Core for rogue APs.WIFI_PCAP_START / _STOPWIFI_PCAP_START <file.pcap>Optimized packet capture.For handshakes/traffic.WIGLE_START / _STOP / _UPLOAD / _LOGOUTWIGLE_START <API key> <username>WiGLE wardriving logs.Uploads to WiGLE.net.
+Integration Note: Capture outputs with $(command) || exit 0 for error handling (e.g., user cancel).
+
+Section 3: Payload Structure and Bash Integration
+Payloads are directories containing payload.sh (main script) + optional assets (e.g., ringtones). Place in /etc/pineapple/payloads/<type>/ (user/recon/alert).
+3.1 Basic Structure
+text# Title: Hello World
+# Description: Displays a greeting.
+# Author: Hak5 Team
+
+LOG "Payload started."
+
+PROMPT "Hello, Pager!"
+
+STRINGLN "Bash echo: World!"
+
+Metadata comments for UI display.
+Mix DuckyScript (CAPS) with Bash (echo, if, etc.).
+Exit gracefully: exit 0 (success), exit 1 (error).
+
+3.2 Best Practices
+
+Error Handling: Use || exit 0 after interactive commands.
+Variables: ${var} for clarity; case-sensitive.
+Quotes: Double (") for expansion; single (') for literals.
+Conditionals: if [ $? -ne 0 ]; then ... fi or command || { log; exit; }.
+Output Capture: var=$(COMMAND) || exit 0.
+Logging: LOG for debugging; view in UI.
+Non-Blocking: Avoid UI commands in alerts; use for recon/user only.
+Testing: Use dev tools for hot-reload; keep payloads <5s for alerts.
+Safety: No warranty—test on non-prod; avoid infinite loops.
+
+
+Section 4: Real-World Payload Examples
+4.1 Hello World (Basic User Payload)
+text# Title: Hello World
+# Description: Simple greeting with user confirm.
+# Author: Example
+
+LOG "Initializing Hello World."
+
+CONFIRMATION_DIALOG "Ready to say hello?"
+|| {
+    LOG "User canceled."
+    exit 0
 }
-start_spin() {
-  stop_spin
-  __spin="$(START_SPINNER "$1")" || __spin=""
-}
-die() {
-  stop_spin
-  ERROR_DIALOG "$1" >/dev/null 2>&1 || true
-  exit 1
-}
-trap 'stop_spin' EXIT
 
-need() { command -v "$1" >/dev/null 2>&1; }
+PROMPT "Hello, WiFi Pineapple Pager!"
 
-logc() {
-  # logc <color> <message>
-  # If a color isn't supported by the current theme, LOG should still print the message (often default color).
-  local c="$1"; shift
-  LOG "$c" "$*"
-}
+LOG "Payload complete."
+exit 0
 
-########################################
-# Banner
-########################################
-print_banner() {
-  [[ "$SHOW_BANNER" == "true" ]] || return 0
+Prompts user; logs actions.
 
-  LOG " "
-  logc "$BANNER_COLOR" "    ██████                ███           █████       █████████                                      "
-  logc "$BANNER_COLOR" "  ███░░░░███             ░░░           ░░███       ███░░░░░███                                     "
-  logc "$BANNER_COLOR" " ███    ░░███ █████ ████ ████   ██████  ░███ █████░███    ░░░   ██████   ██████  ████████   ██████ "
-  logc "$BANNER_COLOR" "░███     ░███░░███ ░███ ░░███  ███░░███ ░███░░███ ░░█████████  ███░░███ ███░░███░░███░░███ ███░░███"
-  logc "$BANNER_COLOR" "░███   ██░███ ░███ ░███  ░███ ░███ ░░░  ░██████░   ░░░░░░░░███░███ ░░░ ░███ ░███ ░███ ░███░███████ "
-  logc "$BANNER_COLOR" "░░███ ░░████  ░███ ░███  ░███ ░███  ███ ░███░░███  ███    ░███░███  ███░███ ░███ ░███ ░███░███░░░  "
-  logc "$BANNER_COLOR" " ░░░██████░██ ░░████████ █████░░██████  ████ █████░░█████████ ░░██████ ░░██████  ░███████ ░░██████ "
-  logc "$BANNER_COLOR" "   ░░░░░░ ░░   ░░░░░░░░ ░░░░░  ░░░░░░  ░░░░ ░░░░░  ░░░░░░░░░   ░░░░░░   ░░░░░░   ░███░░░   ░░░░░░  "
-  logc "$BANNER_COLOR" "                                                                                 ░███              "
-  logc "$BANNER_COLOR" "                                                                                 █████             "
-  logc "$BANNER_COLOR" "                                                                                ░░░░░              "
-  LOG " "
-  LOG "QuickScope v1.0"
-  LOG " "
-}
+4.2 IP Target Deauth (Recon/User Hybrid)
+text# Title: Targeted Deauth
+# Description: Prompt for IP, deauth client.
+# Author: Community
 
-########################################
-# Filter dedupe helpers
-########################################
-norm_ssid() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
-norm_mac()  { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d ':-'; }
+LOG "Starting targeted deauth."
 
-get_existing_ssids() {
-  PINEAPPLE_SSID_FILTER_LIST 2>/dev/null | tr '[:upper:]' '[:lower:]' || true
-}
-get_existing_macs() {
-  PINEAPPLE_MAC_FILTER_LIST 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ':-' || true
-}
-ssid_present() {
-  [[ "$DEDUPE" == "true" ]] || return 1
-  local s; s="$(norm_ssid "$1")"
-  get_existing_ssids | grep -Fqx -- "$s" && return 0
-  get_existing_ssids | grep -Fq  -- "$s" && return 0
-  return 1
-}
-mac_present() {
-  [[ "$DEDUPE" == "true" ]] || return 1
-  local m; m="$(norm_mac "$1")"
-  get_existing_macs | grep -Fq -- "$m" && return 0
-  return 1
-}
+__target_ip=$(IP_PICKER "Enter target IP" "192.168.1.100") || exit 0
+__target_mac=$(MAC_PICKER "Enter MAC" "") || exit 0
 
-########################################
-# SQLite helpers + schema discovery
-########################################
-need sqlite3 || die "Missing dependency: sqlite3"
-[[ -f "$RECON_DB" ]] || die "Recon DB not found at $RECON_DB. Run Recon first."
+START_SPINNER "Deauthenticating..."
 
-sql() { sqlite3 -batch -noheader "$RECON_DB" "$1" 2>/dev/null || true; }
+PINEAPPLE_DEAUTH_CLIENT "${__target_ip}" "${__target_mac}" 6
 
-find_ap_table() {
-  local t cols
-  for t in $(sql "SELECT name FROM sqlite_master WHERE type='table';"); do
-    cols="$(sql "PRAGMA table_info($t);" | awk -F'|' '{print tolower($2)}')"
-    if echo "$cols" | grep -Eq '(^| )ssid($| )' && echo "$cols" | grep -Eq '(^| )bssid($| )'; then
-      echo "$t"; return 0
-    fi
-  done
-  if sql "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ssid';" | grep -q 1; then
-    echo "ssid"; return 0
-  fi
-  return 1
-}
+STOP_SPINNER
+PROMPT "Deauth sent to ${__target_mac}."
 
-pick_col() {
-  local table="$1"; shift
-  local want cols
-  cols="$(sql "PRAGMA table_info($table);" | awk -F'|' '{print tolower($2)}')"
-  for want in "$@"; do
-    if echo "$cols" | grep -qx "$want"; then
-      echo "$want"; return 0
-    fi
-  done
-  return 1
-}
+LOG "Deauth complete for ${__target_mac} at ${__target_ip}."
+exit 0
 
-find_client_table() {
-  local t cols
-  for t in $(sql "SELECT name FROM sqlite_master WHERE type='table';"); do
-    cols="$(sql "PRAGMA table_info($t);" | awk -F'|' '{print tolower($2)}')"
-    if echo "$cols" | grep -Eq '(client_mac|station_mac|mac)' && echo "$cols" | grep -Eq '(bssid|ap_bssid)'; then
-      echo "$t"; return 0
-    fi
-  done
-  return 1
-}
+Captures input, performs attack, provides feedback.
 
-########################################
-# Main
-########################################
-print_banner
+4.3 SSID Pool Collector (Alert Payload)
+text# Title: Auto-Collect Probes
+# Description: Auto-add probed SSIDs to pool on alert.
+# Author: Hak5
 
-# 1) Choose allow vs deny 
-if CONFIRMATION_DIALOG "Add selected AP + clients to ALLOW? (Cancel=DENY)"; then
-  LIST="allow"
-else
-  LIST="deny"
-fi
-LOG "Target list: $LIST"
+# Triggered on probe detection (via env vars)
 
-# 2) Discover tables/columns
-start_spin "$SPIN_LOADING"
+PINEAPPLE_SSID_POOL_COLLECT_START
 
-AP_TABLE="$(find_ap_table || true)"
-[[ -n "$AP_TABLE" ]] || die "Could not find AP table in recon.db."
+LOG "Collecting probes into SSID pool."
 
-SSID_COL="$(pick_col "$AP_TABLE" ssid essid network_name name || true)"
-BSSID_COL="$(pick_col "$AP_TABLE" bssid ap_bssid mac || true)"
-[[ -n "$SSID_COL" && -n "$BSSID_COL" ]] || die "Could not identify SSID/BSSID columns in $AP_TABLE."
+PINEAPPLE_SSID_POOL_LIST > /tmp/pool_log.txt
+LOG "Updated pool logged."
 
-CLIENT_TABLE="$(find_client_table || true)"
-CLIENT_MAC_COL=""
-CLIENT_BSSID_COL=""
-if [[ -n "$CLIENT_TABLE" ]]; then
-  CLIENT_MAC_COL="$(pick_col "$CLIENT_TABLE" client_mac station_mac mac || true)"
-  CLIENT_BSSID_COL="$(pick_col "$CLIENT_TABLE" bssid ap_bssid || true)"
-fi
+exit 0
 
-stop_spin
+Non-interactive; uses environment for context.
 
-# 3) Build AP list 
-start_spin "$SPIN_PARSING"
+4.4 Advanced: Conditional Recon with Wigle
+text# Title: Smart Wardrive
+# Description: Scan, upload if >10 APs found.
+# Author: Example
 
-AP_LINES=()
-if [[ -n "$CLIENT_TABLE" && -n "$CLIENT_MAC_COL" && -n "$CLIENT_BSSID_COL" ]]; then
-  while IFS='|' read -r bssid ssid cc; do
-    [[ -n "$bssid" ]] || continue
-    ssid="${ssid:-<hidden>}"
-    AP_LINES+=("${ssid}\t${bssid}\t${cc}")
-  done < <(sql "
-    SELECT a.$BSSID_COL, a.$SSID_COL, COUNT(DISTINCT c.$CLIENT_MAC_COL) AS cc
-    FROM $AP_TABLE a
-    LEFT JOIN $CLIENT_TABLE c ON c.$CLIENT_BSSID_COL = a.$BSSID_COL
-    GROUP BY a.$BSSID_COL, a.$SSID_COL
-    ORDER BY cc DESC;
-  ")
-else
-  while IFS='|' read -r bssid ssid; do
-    [[ -n "$bssid" ]] || continue
-    ssid="${ssid:-<hidden>}"
-    AP_LINES+=("${ssid}\t${bssid}\t0")
-  done < <(sql "
-    SELECT DISTINCT $BSSID_COL, $SSID_COL
-    FROM $AP_TABLE
-    WHERE $BSSID_COL IS NOT NULL
-    ORDER BY $SSID_COL;
-  " | awk -F'|' '{print $1 "|" $2}')
-fi
+VAR $ap_count = 0
 
-stop_spin
+PINEAPPLE_RECON_NEW
+DELAY 5000  # Scan time
 
-AP_COUNT="${#AP_LINES[@]}"
-[[ "$AP_COUNT" -gt 0 ]] || die "No APs found in recon.db. Run Recon and try again."
+# Simulate counting APs (in real: parse recon JSON)
+ap_count=$(PINEAPPLE_RECON_LIST | wc -l)
+VAR $ap_count = $ap_count
 
-LOG "Select an AP:"
-AP_SSIDS=(); AP_BSSIDS=(); AP_CCNT=()
-for i in $(seq 1 "$AP_COUNT"); do
-  idx=$((i-1))
-  IFS=$'\t' read -r ssid bssid cc <<<"${AP_LINES[$idx]}"
-  AP_SSIDS+=("$ssid"); AP_BSSIDS+=("$bssid"); AP_CCNT+=("$cc")
-  LOG " $i) $ssid ($bssid) clients:$cc"
-done
+IF ($ap_count > 10) THEN
+    WIGLE_START "your_key" "username"
+    DELAY 10000
+    WIGLE_UPLOAD
+    LOG "Uploaded ${$ap_count} APs to Wigle."
+ELSE
+    LOG "Only ${$ap_count} APs; skipping upload."
+END_IF
 
-PICK="$(NUMBER_PICKER "Pick AP (1-$AP_COUNT)" "1")" || exit 0
-[[ "$PICK" =~ ^[0-9]+$ ]] || die "Invalid selection."
-[[ "$PICK" -ge 1 && "$PICK" -le "$AP_COUNT" ]] || die "Out of range."
+exit 0
 
-SEL_IDX=$((PICK-1))
-SEL_SSID="${AP_SSIDS[$SEL_IDX]}"
-SEL_BSSID="${AP_BSSIDS[$SEL_IDX]}"
-SEL_CC="${AP_CCNT[$SEL_IDX]}"
+Uses flow control; integrates recon + exfil.
 
-LOG "Selected: $SEL_SSID ($SEL_BSSID)"
+From Hak5 GitHub (wifipineapplepager-payloads): Community examples include "Entropy Bunny" (random deauths), "Targeted Client" (filters + deauth), and themes/ringtones. Pull requests encouraged for new ones.
 
-# 4) Checkpoint: confirm before making any changes
-CONFIRMATION_DIALOG "Update the filter lists?" || { ALERT "Cancelled"; exit 0; }
+Section 5: Advanced Techniques for LLM Generation
 
-# 5) Apply SSID filter (skip hidden/blank)
-SSID_ADDED=0
-SSID_SKIPPED=0
-if [[ -z "$SEL_SSID" || "$SEL_SSID" == "<hidden>" ]]; then
-  SSID_SKIPPED=1
-  LOG "SSID hidden/blank — skipping SSID add."
-elif ssid_present "$SEL_SSID"; then
-  SSID_SKIPPED=1
-  LOG "SSID already present — skipping."
-else
-  start_spin "$SPIN_APPLYING"
-  PINEAPPLE_SSID_FILTER_ADD "$LIST" "$SEL_SSID"
-  stop_spin
-  SSID_ADDED=1
-  LOG "SSID added."
-fi
+Prompt Engineering for Payloads: When generating, specify type (user/alert), goal (e.g., "deauth on probe"), constraints (non-blocking).
+Innovation Ideas:
+Event-Driven: Use env vars (e.g., $ALERT_MAC) in alerts.
+Chaining: $(PINEAPPLE_SSID_POOL_LIST) | grep target | PINEAPPLE_SSID_POOL_ADD.
+Loops: While recon active, check conditions.
 
-# 6) Apply client MAC filters (if client table exists)
-CLIENTS_ADDED=0
-CLIENTS_SKIPPED=0
-
-if [[ -n "$CLIENT_TABLE" && -n "$CLIENT_MAC_COL" && -n "$CLIENT_BSSID_COL" ]]; then
-  start_spin "$SPIN_PARSING"
-  mapfile -t CLIENT_MACS < <(sql "
-    SELECT DISTINCT $CLIENT_MAC_COL
-    FROM $CLIENT_TABLE
-    WHERE $CLIENT_BSSID_COL = '$SEL_BSSID'
-      AND $CLIENT_MAC_COL IS NOT NULL
-      AND LENGTH($CLIENT_MAC_COL) > 0
-    ORDER BY $CLIENT_MAC_COL;
-  ")
-  stop_spin
-
-  if [[ "${#CLIENT_MACS[@]}" -eq 0 ]]; then
-    LOG "No clients recorded for this AP in recon.db."
-  else
-    start_spin "$SPIN_APPLYING"
-    for mac in "${CLIENT_MACS[@]}"; do
-      [[ -n "$mac" ]] || continue
-      if mac_present "$mac"; then
-        CLIENTS_SKIPPED=$((CLIENTS_SKIPPED+1))
-        continue
-      fi
-      PINEAPPLE_MAC_FILTER_ADD "$LIST" "$mac"
-      CLIENTS_ADDED=$((CLIENTS_ADDED+1))
-    done
-    stop_spin
-  fi
-else
-  LOG "Client table not detected — only SSID will be handled."
-fi
-
-# 7) Summary + final alert
-LOG "SSID: added $SSID_ADDED, skipped $SSID_SKIPPED"
-LOG "Clients: added $CLIENTS_ADDED, skipped $CLIENTS_SKIPPED"
-
-# End-of-run user notification
-ALERT "Lists updated ($LIST)"
+Common Pitfalls: Forgetting || exit 0 (crashes on cancel); UI in alerts (blocks device); unquoted vars (injection risks).
+Resources: Hak5 Docs (docs.hak5.org), GitHub (github.com/hak5/wifipineapplepager-payloads), Payload Hub (payloadhub.com).
