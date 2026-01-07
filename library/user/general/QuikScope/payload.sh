@@ -103,14 +103,11 @@ norm_bssid_colon() {
 print_banner() {
   [[ "$SHOW_BANNER" == "true" ]] || return 0
   LOG " "
-  logc "$BANNER_COLOR" '   ____       _ _     __                     '
-  logc "$BANNER_COLOR" '  /___ \_   _(_) | __/ _\ ___ ___  _ __   ___'
-  logc "$BANNER_COLOR" ' //  / / | | | | |/ /\ \ / __/ _ \| '"'"'_ \ / _ \'
-  logc "$BANNER_COLOR" '/ \_/ /| |_| | |   < _\ \ (_| (_) | |_) |  __/'
-  logc "$BANNER_COLOR" '\___,_\ \__,_|_|_|\_\\__/\___\___/| .__/ \___|'
-  logc "$BANNER_COLOR" '                                  |_|         '
+  logc "$BANNER_COLOR" '▒█▀▀█ █░░█ ░▀░ █░█ ▒█▀▀▀█ █▀▀ █▀▀█ █▀▀█ █▀▀ '
+  logc "$BANNER_COLOR" '▒█░▒█ █░░█ ▀█▀ █▀▄ ░▀▀▀▄▄ █░░ █░░█ █░░█ █▀▀ '
+  logc "$BANNER_COLOR" '░▀▀█▄ ░▀▀▀ ▀▀▀ ▀░▀ ▒█▄▄▄█ ▀▀▀ ▀▀▀▀ █▀▀▀ ▀▀▀'
   LOG " "
-  LOG "QuickScope v1.3.3 Created by: out0fstep"
+  LOG "QuickScope v1.0 Created by: out0fstep"
   LOG " "
 }
 
