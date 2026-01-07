@@ -1,6 +1,6 @@
-# QuickScope
+# QuikScope
 
-**QuickScope** is a Pineapple Pager payload that helps you quickly:
+**QuikScope** is a Pineapple Pager payload that helps you quickly:
 1) pick a *recently seen* Access Point (AP) from **Recon**, then  
 2) add that AP’s **SSID** (network filter) and associated **client MACs** (client filter) to either the **ALLOW** or **DENY** lists — with optional dedupe to avoid duplicates.
 
