@@ -1,6 +1,6 @@
-# 🎯 QuickScope
+# 🎯 QuikScope
 
-**QuickScope** is a WiFi Pineapple Pager payload that lets you **quickly select an AP from Recon results** and then **add the AP SSID + associated client MACs** to the Pager’s **ALLOW or DENY filter lists** (with optional dedupe).
+**QuikScope** is a WiFi Pineapple Pager payload that lets you **quickly select an AP from Recon results** and then **add the AP SSID + associated client MACs** to the Pager’s **ALLOW or DENY filter lists** (with optional dedupe).
 
 It’s built for fast, on-device workflow:
 
